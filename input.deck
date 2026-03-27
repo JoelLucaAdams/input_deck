@@ -9,7 +9,7 @@ begin:constant
   # Target details
   n_tilde = 1.1 # Nondimensionalised density
   L_scale = 1e-6 # Scale length of the target
-  L_target_x = 30e-6 # Length of the target (including scale length)
+  L_target_x = 5e-6 # Length of the target (including scale length)
   density_profile = if(x lt 0, exp(x/L_scale), if(x gt 0, 1, 0)) # Shape of the target
 
   # Simulation details
