@@ -55,8 +55,8 @@ begin:control
   t_end = sim_time # hits target a ~170fs ((distance from x_min to target) / c)
   x_min = sim_x_min
   x_max = L_target_x
-  y_min = -15e-6
-  y_max =  15e-6
+  y_min = -10e-6
+  y_max =  10e-6
   nx = 2000 # 16nm resolution
   ny = 750 # 16nm resolution
   nparticles = nint(((L_target_x + L_pre) / (x_max - x_min)) * nx * ny * mppc) 
