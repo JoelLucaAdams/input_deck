@@ -1,0 +1,126 @@
+### USER DEFINED CONSTANTS ###
+begin:constant
+  # Laser details
+  I_peak_Wcm2 = 1e+23 # Peak intensity of the laser
+  lambda_L = 800e-9 # Wavelength of the laser
+  y_fwhm_L = 2.4e-6 # Laser focal spot originally 2.4 (3x wavelength)
+  tau_fwhm_L = 10e-15 # Laser pulse length
+
+  # Target details
+  n_tilde = 1.1 # Nondimensionalised density
+  L_scale = 1e-6 # Scale length of the target
+  L_target_x = 30e-6 # Length of the target (including scale length)
+  density_profile = if(x lt 0, exp(x/L_scale), if(x gt 0, 1, 0)) # Shape of the target
+
+  # Simulation details
+  sim_x_min = -50e-6
+  mppc = 100 # Macro particles per cell
+  sim_start = 0 # Time before particle pusher and QED starts (check with min_den_fact before changing!)
+  min_den_fact = 1e-4 # Minumum density factor (must be much less than 1!)
+  L_pre = -L_scale * loge(min_den_fact) # Length of pre-plasma
+end:constant
+
+### ELECTRON DENSITY ###
+begin:constant
+  a_0 = 0.85 * sqrt((1e-18 * I_peak_Wcm2) * ((1e6 * lambda_L)^2)) # Normilaised vector potential of the laser
+  omega_L = (2 * pi * c) / lambda_L # Laser frequency
+  lambda_p = lambda_L / sqrt(n_tilde * a_0) # Plasma wavelength
+
+  n_c = omega_L^2 * (epsilon0 * me) / qe^2 # Critical density
+  n_c_rel = a_0 * n_c # Relativistic critical density
+  n_elec = n_c_rel * n_tilde # Average electron number density
+end:constant
+
+### SIM RUNTIME ###
+begin:constant
+  target_plus_scale_len = L_target_x + (L_pre * 0.5)
+  vacuum_minus_scale_len = -sim_x_min - (L_pre * 0.5)
+
+  # Time for laser to propagate through vacuum discounting the pre_pulse length
+  vaccum_time = vacuum_minus_scale_len / c
+
+  # Time for laser to propagate through the target
+  group_velocity = c * sqrt(1 - n_tilde)
+
+  # If overdense, v_group is imaginary so fallback to 2 * (L_target_x / c)
+  target_time = if(n_tilde gt 1, 2 * (L_target_x / c), target_plus_scale_len / group_velocity)
+
+  # Account for pulse width
+  pulse_buffer = 2 * tau_fwhm_L
+
+  sim_time = vaccum_time + target_time + pulse_buffer
+end:constant
+
+begin:control
+  t_end = sim_time # hits target a ~170fs ((distance from x_min to target) / c)
+  x_min = sim_x_min
+  x_max = L_target_x
+  y_min = -15e-6
+  y_max =  15e-6
+  nx = 2000 # 16nm resolution
+  ny = 750 # 16nm resolution
+  nparticles = nint(((L_target_x + L_pre) / (x_max - x_min)) * nx * ny * mppc) 
+  dt_multiplier = 0.8
+  smooth_currents = T
+  dlb_threshold = 0.8
+  stdout_frequency = 1000 # Print ETA
+  particle_tstart = sim_start # Time before the laser hits the target
+end:control
+
+### LASER FOCUSING ###
+begin:constant
+  # Focusing distance
+  x_foc = -x_min # Boundary to focal point distance
+
+  # Phase
+  k_L = 2.0 * pi / lambda_L # Laser wave number
+  w_0 = y_fwhm_L / sqrt(2*loge(2)) # Beam waist in y
+  x_Rr = pi * w_0^2 / lambda_L # Rayleigh range
+  r_c_bound = x_foc * (1 + (x_Rr/x_foc)^2) # Boundary curv. rad.
+  psi_Gouy = atan(-x_foc/x_Rr) # Boundary Gouy shift
+  omega_L = 2 * pi * c / lambda_L # Angular frequency of the laser
+
+  # Spatial profile
+  w_boundary = w_0 * sqrt(1 + (x_foc/x_Rr)^2) # Waist on boundary
+  I_boundary = I_peak_Wcm2 * (w_0 / w_boundary)^1 # Intens. on boundary
+
+  # Temporal profile
+  w_t = tau_fwhm_L / sqrt(2*loge(2)) # Beam waist in t
+  t_hw01m = 0.5 * tau_fwhm_L * sqrt(loge(10)/loge(2)) # Half width 0.1 maximum
+end:constant
+
+begin:laser
+  boundary = x_min
+  intensity_w_cm2 = I_boundary
+  omega = omega_L
+  phase = k_L * (y^2 / (2 * r_c_bound)) - psi_Gouy
+  profile = gauss(y, 0, w_boundary) # Spatial profile
+  t_profile = gauss(time, t_hw01m, w_t) # Temporal profile
+  t_start = start
+  t_end = end
+end:laser
+
+begin:boundaries
+  bc_x_min_particle = open
+  bc_x_max_particle = reflect
+  bc_y_min_particle = periodic
+  bc_y_max_particle = periodic
+  bc_x_min_field = simple_laser
+  bc_x_max_field = simple_outflow
+  bc_y_min_field = simple_outflow
+  bc_y_max_field = simple_outflow
+end:boundaries
+
+begin:output_global
+  force_final_to_be_restartable = F
+end:output_global
+
+begin:output
+  name = normal
+  dump_first = T
+  dump_last = T
+  dt_snapshot = t_end / 10
+
+  grid = always
+  poynt_flux = always
+end:output
